@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
-import { getBudgets, upsertBudget, deleteBudget } from '../lib/supabase'
+import { getBudgets, upsertBudget, deleteBudget, isConfigured } from '../lib/supabase'
 import { useToast } from '../hooks/useToast'
 
 const CATEGORIES = [
@@ -63,6 +63,7 @@ export default function Budgets() {
   useEffect(() => { load() }, [])
 
   async function load() {
+    if (!isConfigured) { setLoading(false); return }
     try { setBudgets(await getBudgets()) }
     catch (e) { toast('Fout: ' + e.message, 'error') }
     setLoading(false)

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, X, ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
-import { getPotjes, upsertPotje, deletePotje, addPotjeMutatie, getPotjeMutaties } from '../lib/supabase'
+import { getPotjes, upsertPotje, deletePotje, addPotjeMutatie, getPotjeMutaties, isConfigured } from '../lib/supabase'
 import { useToast } from '../hooks/useToast'
 
 function fmt(n) { return '€' + Number(n).toFixed(2).replace('.', ',') }
@@ -144,6 +144,7 @@ export default function Potjes() {
   useEffect(() => { load() }, [])
 
   async function load() {
+    if (!isConfigured) { setLoading(false); return }
     try { setPotjes(await getPotjes()) }
     catch (e) { toast('Fout: ' + e.message, 'error') }
     setLoading(false)

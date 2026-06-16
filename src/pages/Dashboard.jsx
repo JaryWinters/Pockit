@@ -2,11 +2,18 @@ import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react'
 import { format, addMonths, subMonths } from 'date-fns'
 import { nl } from 'date-fns/locale'
-import { getTransactions, addTransaction, updateTransaction, deleteTransaction, getBudgets } from '../lib/supabase'
+import { getTransactions, addTransaction, updateTransaction, deleteTransaction, getBudgets, isConfigured } from '../lib/supabase'
 import TransactionForm from '../components/TransactionForm'
 import { useToast } from '../hooks/useToast'
 
 function fmt(n) { return '€' + Number(n).toFixed(2).replace('.', ',') }
+
+const EMOJI = {
+  'Boodschappen':'🛒','Fastfood & afhaal':'🍔','Hypotheek':'🏠','Verzekeringen':'🛡️',
+  'Internet':'📡','Water':'💧','Energie':'⚡','Streaming':'📺','Huwelijk':'💍',
+  'Renovatie':'🔨','Vakantie':'✈️','Kleding':'👕','Gezondheid':'💊','Cadeaus':'🎁',
+  'Loon':'💰','IVT':'💰','Maaltijdcheques':'🍽️','Andere inkomsten':'💰','Andere':'📌'
+}
 
 export default function Dashboard() {
   const toast = useToast()
@@ -18,6 +25,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   async function load() {
+    if (!isConfigured) { setLoading(false); return }
     setLoading(true)
     try {
       const [t, b] = await Promise.all([
@@ -35,7 +43,6 @@ export default function Dashboard() {
   const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + +t.bedrag, 0)
   const balance = income - expense
 
-  // per category spending
   const bycat = txs.filter(t => t.type === 'expense').reduce((acc, t) => {
     acc[t.categorie] = (acc[t.categorie] || 0) + +t.bedrag; return acc
   }, {})
@@ -64,8 +71,6 @@ export default function Dashboard() {
     } catch (e) { toast('Fout: ' + e.message, 'error') }
   }
 
-  const EMOJI = { 'Boodschappen':'🛒','Fastfood & afhaal':'🍔','Hypotheek':'🏠','Verzekeringen':'🛡️','Internet':'📡','Water':'💧','Energie':'⚡','Streaming':'📺','Huwelijk':'💍','Renovatie':'🔨','Vakantie':'✈️','Kleding':'👕','Gezondheid':'💊','Cadeaus':'🎁','Loon':'💰','IVT':'💰','Maaltijdcheques':'🍽️','Andere inkomsten':'💰','Andere':'📌' }
-
   return (
     <div className="page">
       {/* Month nav */}
@@ -79,10 +84,13 @@ export default function Dashboard() {
             <ChevronRight size={18} />
           </button>
         </div>
+        <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
+          + Toevoegen
+        </button>
       </div>
 
-      {/* Stats */}
-      <div className="stat-grid">
+      {/* Stats — full width */}
+      <div className="stat-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-tile">
           <div className="stat-label">Inkomsten</div>
           <div className="stat-value green">{fmt(income)}</div>
@@ -91,83 +99,105 @@ export default function Dashboard() {
           <div className="stat-label">Uitgaven</div>
           <div className="stat-value red">{fmt(expense)}</div>
         </div>
-        <div className="stat-tile" style={{ gridColumn: 'span 2' }}>
+        <div className="stat-tile">
           <div className="stat-label">Over deze maand</div>
           <div className={`stat-value ${balance >= 0 ? 'green' : 'red'}`}>{fmt(balance)}</div>
         </div>
+        <div className="stat-tile">
+          <div className="stat-label">Transacties</div>
+          <div className="stat-value">{txs.length}</div>
+        </div>
       </div>
 
-      {/* Budget overview */}
-      {budgets.length > 0 && (
-        <div className="card" style={{ marginBottom: '.75rem' }}>
-          <div className="card-title">Budgetten deze maand</div>
-          {budgets.map(b => {
-            const spent = bycat[b.category] || 0
-            const pct = Math.min((spent / b.monthly_limit) * 100, 100)
-            const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : 'ok'
-            return (
-              <div key={b.id} className="budget-row">
-                <div className="budget-row-head">
-                  <span className="budget-row-name">{b.category}</span>
-                  <span className="budget-row-nums">
-                    <strong>{fmt(spent)}</strong> / {fmt(b.monthly_limit)}
-                  </span>
-                </div>
-                <div className="progress-wrap">
-                  <div className="progress-bar-bg">
-                    <div className={`progress-bar-fill ${cls}`} style={{ width: pct + '%' }} />
+      {/* Desktop: two-column grid | Mobile: stacked */}
+      <div className="desktop-grid-wide">
+
+        {/* LEFT — Transaction list */}
+        <div>
+          <div className="section-head">
+            <h2>Transacties</h2>
+          </div>
+          {loading ? (
+            <div className="empty"><div className="empty-icon">⏳</div>Laden...</div>
+          ) : !isConfigured ? (
+            <div className="empty">
+              <div className="empty-icon">🔑</div>
+              Stel eerst je Supabase credentials in.
+            </div>
+          ) : txs.length === 0 ? (
+            <div className="empty">
+              <div className="empty-icon">💸</div>
+              Nog geen transacties deze maand.
+            </div>
+          ) : (
+            <div className="tx-list">
+              {txs.map(tx => (
+                <div key={tx.id} className="tx-row">
+                  <div className={`tx-icon ${tx.type}`}>
+                    {EMOJI[tx.categorie] || (tx.type === 'income' ? '💰' : '💸')}
+                  </div>
+                  <div className="tx-meta">
+                    <div className="tx-desc">{tx.beschrijving}</div>
+                    <div className="tx-cat">{tx.categorie} · {tx.date}</div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div className={`tx-amount ${tx.type}`}>
+                      {tx.type === 'expense' ? '−' : '+'}{fmt(tx.bedrag)}
+                    </div>
+                    <div style={{ display: 'flex', gap: '.3rem', marginTop: '.3rem', justifyContent: 'flex-end' }}>
+                      <button className="btn btn-ghost btn-sm btn-icon"
+                        onClick={() => { setEditing(tx); setShowForm(true) }}>
+                        <Pencil size={13} />
+                      </button>
+                      <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDelete(tx.id)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Transaction list */}
-      <div className="section-head">
-        <h2>Transacties</h2>
-        <span className="text-muted">{txs.length} stuks</span>
+        {/* RIGHT — Budget overview */}
+        <div>
+          {budgets.length > 0 && (
+            <>
+              <div className="section-head">
+                <h2>Budgetten deze maand</h2>
+              </div>
+              <div className="card">
+                {budgets.map(b => {
+                  const spent = bycat[b.category] || 0
+                  const pct = Math.min((spent / b.monthly_limit) * 100, 100)
+                  const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : 'ok'
+                  return (
+                    <div key={b.id} className="budget-row">
+                      <div className="budget-row-head">
+                        <span className="budget-row-name">{b.category}</span>
+                        <span className="budget-row-nums">
+                          <strong>{fmt(spent)}</strong> / {fmt(b.monthly_limit)}
+                        </span>
+                      </div>
+                      <div className="progress-wrap">
+                        <div className="progress-bar-bg">
+                          <div className={`progress-bar-fill ${cls}`} style={{ width: pct + '%' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
       </div>
 
-      {loading ? (
-        <div className="empty"><div className="empty-icon">⏳</div>Laden...</div>
-      ) : txs.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon">💸</div>
-          Nog geen transacties deze maand.<br />Tik + om er een toe te voegen.
-        </div>
-      ) : (
-        <div className="tx-list">
-          {txs.map(tx => (
-            <div key={tx.id} className="tx-row">
-              <div className={`tx-icon ${tx.type}`}>
-                {EMOJI[tx.categorie] || (tx.type === 'income' ? '💰' : '💸')}
-              </div>
-              <div className="tx-meta">
-                <div className="tx-desc">{tx.beschrijving}</div>
-                <div className="tx-cat">{tx.categorie} · {tx.date}</div>
-              </div>
-              <div className="tx-amount" style={{ textAlign: 'right' }}>
-                <div className={tx.type}>{tx.type === 'expense' ? '−' : '+'}{fmt(tx.bedrag)}</div>
-                <div style={{ display: 'flex', gap: '.3rem', marginTop: '.3rem', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-ghost btn-sm btn-icon"
-                    onClick={() => { setEditing(tx); setShowForm(true) }}>
-                    <Pencil size={13} />
-                  </button>
-                  <button className="btn btn-danger btn-sm btn-icon"
-                    onClick={() => handleDelete(tx.id)}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* FAB */}
-      <button className="fab" onClick={() => { setEditing(null); setShowForm(true) }}>＋</button>
+      {/* FAB — mobile only */}
+      <button className="fab" style={{ display: 'none' }}
+        onClick={() => { setEditing(null); setShowForm(true) }}>＋</button>
 
       {showForm && (
         <TransactionForm
