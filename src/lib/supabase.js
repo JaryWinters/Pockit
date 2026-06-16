@@ -34,7 +34,8 @@ export async function getTransactions({ month, year } = {}) {
 
   if (month !== undefined && year !== undefined) {
     const from = `${year}-${String(month).padStart(2, '0')}-01`
-    const to   = `${year}-${String(month).padStart(2, '0')}-31`
+    const lastDay = new Date(year, month, 0).getDate()
+    const to   = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
     query = query.gte('date', from).lte('date', to)
   }
 
