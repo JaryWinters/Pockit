@@ -1,0 +1,60 @@
+name: Supabase Weekly Backup
+
+on:
+  schedule:
+    # Elke zondag om 02:00 UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backup transactions
+        run: |
+          mkdir -p backups
+          DATE=$(date +%Y-%m-%d)
+
+          # Haal alle data op via Supabase REST API
+          curl -s "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/transactions?select=*&order=date.desc" \
+            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            > "backups/transactions_${DATE}.json"
+
+          curl -s "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/budgets?select=*" \
+            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            > "backups/budgets_${DATE}.json"
+
+          curl -s "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/potjes?select=*" \
+            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            > "backups/potjes_${DATE}.json"
+
+          curl -s "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/potje_mutaties?select=*" \
+            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            > "backups/potje_mutaties_${DATE}.json"
+
+          echo "✅ Backup klaar voor $DATE"
+          ls -lh backups/
+
+      # Verwijder backups ouder dan 12 weken
+      - name: Verwijder oude backups
+        run: |
+          find backups/ -name "*.json" -mtime +84 -delete
+          echo "Overblijvende backups:"
+          ls backups/ | head -20
+
+      - name: Commit backup
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add backups/
+          git diff --staged --quiet || git commit -m "🗄️ Automatische backup $(date +%Y-%m-%d)"
+          git push
